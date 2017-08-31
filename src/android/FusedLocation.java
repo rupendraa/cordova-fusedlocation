@@ -27,7 +27,9 @@ import android.util.Log;
 public class FusedLocation extends CordovaPlugin  {
 
     private static final String actiongetLocation = "getLocation";
+    private static final String actiongetHighLocation = "getHighLocation";
     private static final String actiongetCurrentAddress = "getCurrentAddress";
+
     protected FusedLocationHelper locHelper;
     
     @Override
@@ -40,8 +42,17 @@ public class FusedLocation extends CordovaPlugin  {
     
     @Override
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
+        try {
+            locHelper.StopListener();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         if (action.equals(actiongetLocation)) {
             locHelper.GetLocation(callbackContext);
+            return true;
+        }
+        else if (action.equals(actiongetHighLocation)) {
+            locHelper.GetHighLocation(callbackContext);
             return true;
         }
         else if (action.equals(actiongetCurrentAddress)) {
@@ -50,6 +61,16 @@ public class FusedLocation extends CordovaPlugin  {
         }
 
         return false;
+    }
+
+    @Override
+    public void onPause(boolean multitasking) {
+        super.onPause(false);
+        try {
+            locHelper.StopListener();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
 
