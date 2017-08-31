@@ -46,13 +46,14 @@ import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
 import com.google.android.gms.common.api.GoogleApiClient.OnConnectionFailedListener;
 import com.google.android.gms.common.GooglePlayServicesUtil;
 
+import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationSettingsRequest;
 import com.google.android.gms.location.LocationSettingsResult;
 import com.google.android.gms.location.LocationSettingsStatusCodes;
 
-public class FusedLocationHelper extends Activity implements GoogleApiClient.ConnectionCallbacks,
+public class FusedLocationHelper extends Activity implements LocationListener,GoogleApiClient.ConnectionCallbacks,
                GoogleApiClient.OnConnectionFailedListener, ResultCallback<LocationSettingsResult>   {
                    
     protected Activity mActivity = null;
@@ -64,6 +65,8 @@ public class FusedLocationHelper extends Activity implements GoogleApiClient.Con
     protected static final int REQUEST_CHECK_SETTINGS = 0x1;
     
     protected boolean mGetAddress;
+    protected boolean getHigh;
+
 
     public FusedLocationHelper(Activity activity) {
         mActivity = activity;
@@ -71,16 +74,34 @@ public class FusedLocationHelper extends Activity implements GoogleApiClient.Con
 
     public void GetLocation(CallbackContext cb) {
         mGetAddress = false;
+        getHigh=false;
 		mCallBackWhenGotLocation = cb;
 		CheckForPlayServices();
         SetupLocationFetching(cb);
     }
-    
+    public void GetHighLocation(CallbackContext cb) {
+        Log.d("E-Clean","Using High accuracy mode");
+        mGetAddress = false;
+        getHigh=true;
+        mCallBackWhenGotLocation = cb;
+        CheckForPlayServices();
+        SetupLocationFetching(cb);
+    }
     public void GetAddress(CallbackContext cb) {
         mGetAddress = true;
+        getHigh=false;
 		mCallBackWhenGotLocation = cb;
 		CheckForPlayServices();
         SetupLocationFetching(cb);
+    }
+    public void StopListener() throws Exception {
+        try {
+            LocationServices.FusedLocationApi.removeLocationUpdates(mGoogleApiClient, this);
+        }
+        catch (Exception E)
+        {
+            throw E;
+        }
     }
 
 	protected void CheckForPlayServices() {
@@ -119,6 +140,12 @@ public class FusedLocationHelper extends Activity implements GoogleApiClient.Con
 
 	 protected void createLocationRequest() {
         mLocationRequest = new LocationRequest();
+         if (getHigh)
+         {
+             mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+             mLocationRequest.setInterval(0);
+         }
+         else
         mLocationRequest.setPriority(LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY);
     }
     
@@ -140,21 +167,35 @@ public class FusedLocationHelper extends Activity implements GoogleApiClient.Con
     protected void GetLastLocation() {
         Location lastLocation = LocationServices.FusedLocationApi.getLastLocation(mGoogleApiClient);
         if (lastLocation != null) {
-            try {
-		    JSONObject jsonLocation = new JSONObject();
-            jsonLocation.put("lat", String.valueOf(lastLocation.getLatitude()));
-            jsonLocation.put("lon", String.valueOf(lastLocation.getLongitude()));
-            if (mGetAddress) {
-                GetAddressFromLocation(lastLocation);
-            } else {
-                mCallBackWhenGotLocation.success(jsonLocation);
+            Log.d("E-Clean","Last location acc:"+lastLocation.getAccuracy() + " Time: "+lastLocation.getTime() + " Current time: " + System.currentTimeMillis()  );
+            if (getHigh)
+            {
+                if (lastLocation.getAccuracy()>5 || (System.currentTimeMillis()-lastLocation.getTime())>180000 )
+                {
+                   
+                    LocationServices.FusedLocationApi.requestLocationUpdates(mGoogleApiClient,  mLocationRequest,  this);
+                    return;
+                }
             }
+            try {
+                JSONObject jsonLocation = new JSONObject();
+                jsonLocation.put("lat", String.valueOf(lastLocation.getLatitude()));
+                jsonLocation.put("lon", String.valueOf(lastLocation.getLongitude()));
+                jsonLocation.put("acc", String.valueOf(lastLocation.getAccuracy()));
+                jsonLocation.put("tme", String.valueOf(lastLocation.getTime()));
+                if (mGetAddress) {
+                    GetAddressFromLocation(lastLocation);
+                } else {
+                    mCallBackWhenGotLocation.success(jsonLocation);
+                }
             }
             catch (JSONException ex) {
                  ErrorHappened("Error generating JSON from location"); 
             }         
         } else {
-            ErrorHappened("no location available");         
+            //Set up a location listener.
+            LocationServices.FusedLocationApi.requestLocationUpdates(mGoogleApiClient,  mLocationRequest,  this);
+            return;
         }
     }
     
@@ -256,7 +297,58 @@ public class FusedLocationHelper extends Activity implements GoogleApiClient.Con
     protected void ErrorHappened(String msg) {
         Log.i(TAG, msg);
         mCallBackWhenGotLocation.sendPluginResult(new PluginResult(PluginResult.Status.ERROR, msg));
-    }  
+    }
+
+
+    @Override
+    public void onLocationChanged(Location location) {
+        Location lastLocation = location;
+        Log.d("E-Clean","Last location acc:"+lastLocation.getAccuracy() + " Time: "+lastLocation.getTime() + " Current time: " + System.currentTimeMillis()  );
+        if (getHigh) {
+            if (location.getAccuracy() < 1 || (System.currentTimeMillis() - lastLocation.getTime()) > 180000) {
+                try {
+                    JSONObject jsonLocation = new JSONObject();
+                    jsonLocation.put("lat", String.valueOf(lastLocation.getLatitude()));
+                    jsonLocation.put("lon", String.valueOf(lastLocation.getLongitude()));
+                    jsonLocation.put("acc", String.valueOf(lastLocation.getAccuracy()));
+                    jsonLocation.put("tme", String.valueOf(lastLocation.getTime()));
+
+                    mCallBackWhenGotLocation.success(jsonLocation);
+
+                } catch (JSONException ex) {
+                    ErrorHappened("Error generating JSON from location");
+                }
+                try {
+                    StopListener();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        else
+        {
+            try {
+                JSONObject jsonLocation = new JSONObject();
+                jsonLocation.put("lat", String.valueOf(lastLocation.getLatitude()));
+                jsonLocation.put("lon", String.valueOf(lastLocation.getLongitude()));
+                jsonLocation.put("acc", String.valueOf(lastLocation.getAccuracy()));
+                jsonLocation.put("tme", String.valueOf(lastLocation.getTime()));
+
+                mCallBackWhenGotLocation.success(jsonLocation);
+
+            } catch (JSONException ex) {
+                ErrorHappened("Error generating JSON from location");
+            }
+            try {
+                StopListener();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+    }
+
+
 }
 
 
