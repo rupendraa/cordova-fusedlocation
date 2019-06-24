@@ -10,6 +10,9 @@ function FusedLocation () {}
 FusedLocation.prototype.getLocation = function (onSuccess, onFail) {   
 	cordova.exec(onSuccess, onFail, "FusedLocation", "getLocation", []);
 };
+FusedLocation.prototype.getHighLocation = function (onSuccess, onFail) {   
+	cordova.exec(onSuccess, onFail, "FusedLocation", "getHighLocation", []);
+};
 FusedLocation.prototype.getCurrentAddress = function (onSuccess, onFail) {   
 	cordova.exec(onSuccess, onFail, "FusedLocation", "getCurrentAddress", []);
 };
